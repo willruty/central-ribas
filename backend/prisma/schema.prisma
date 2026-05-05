@@ -1,0 +1,410 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["auth", "public"]
+}
+
+// ============== AUTH SCHEMA ==============
+
+model users {
+  id                   String   @id @db.Uuid
+  email                String?  @unique @db.VarChar(255)
+  encrypted_password   String?  @db.VarChar(255)
+  email_confirmed_at   DateTime? @db.Timestamptz(6)
+  created_at           DateTime? @db.Timestamptz(6)
+  updated_at           DateTime? @db.Timestamptz(6)
+  phone                String?  @unique
+  phone_confirmed_at   DateTime? @db.Timestamptz(6)
+  role                 String?  @db.VarChar(255)
+  is_sso_user          Boolean  @default(false)
+  deleted_at           DateTime? @db.Timestamptz(6)
+
+  // Relations
+  profiles             profiles?
+
+  @@index([email])
+  @@schema("auth")
+}
+
+// ============== PUBLIC SCHEMA ==============
+
+model categorias_equipamento {
+  id           String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nome         String         @unique
+  descricao    String?
+  created_at   DateTime       @default(now()) @db.Timestamptz(6)
+
+  equipamentos equipamentos[]
+
+  @@schema("public")
+}
+
+model clientes {
+  id            String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tipo          tipo_cliente @default(pessoa_juridica)
+  razao_social  String?
+  nome_fantasia String?
+  cnpj          String?      @unique
+  nome_completo String?
+  cpf           String?      @unique
+  email         String?
+  telefone      String?
+  celular       String?
+  cep           String?
+  logradouro    String?
+  numero        String?
+  complemento   String?
+  bairro        String?
+  cidade        String?
+  estado        String?      @db.Char(2)
+  observacoes   String?
+  ativo         Boolean      @default(true)
+  deleted_at    DateTime?    @db.Timestamptz(6)
+  created_at    DateTime     @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime     @default(now()) @db.Timestamptz(6)
+
+  contratos     contratos[]
+  documentos    documentos[]
+
+  @@schema("public")
+}
+
+model contratos {
+  id                  String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cliente_id          String           @db.Uuid
+  criado_por_id       String?          @db.Uuid
+  numero              String           @unique
+  data_inicio         DateTime         @db.Date
+  data_fim_previsto   DateTime?        @db.Date
+  data_fim_real       DateTime?        @db.Date
+  local_servico       String?
+  cep_servico         String?
+  cidade_servico      String?
+  estado_servico      String?          @db.Char(2)
+  valor_total         Decimal?         @db.Decimal(12, 2)
+  condicoes_pagamento String?
+  status              status_contrato  @default(rascunho)
+  descricao           String?
+  observacoes         String?
+  created_at          DateTime         @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime         @default(now()) @db.Timestamptz(6)
+
+  clientes            clientes         @relation(fields: [cliente_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  profiles            profiles?        @relation(fields: [criado_por_id], references: [id], onUpdate: NoAction)
+  documentos          documentos[]
+  itens_contrato      itens_contrato[]
+  operacoes           operacoes[]
+  pagamentos          pagamentos[]
+
+  @@index([cliente_id], map: "idx_contratos_cliente_id")
+  @@index([criado_por_id], map: "idx_contratos_criado_por_id")
+  @@index([data_inicio], map: "idx_contratos_data_inicio")
+  @@index([status], map: "idx_contratos_status")
+  @@schema("public")
+}
+
+model documentos {
+  id             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  contrato_id    String?        @db.Uuid
+  funcionario_id String?        @db.Uuid
+  equipamento_id String?        @db.Uuid
+  manutencao_id  String?        @db.Uuid
+  cliente_id     String?        @db.Uuid
+  tipo           tipo_documento @default(outro)
+  nome_arquivo   String
+  descricao      String?
+  tamanho_bytes  BigInt?
+  mime_type      String?
+  storage_bucket String         @default("documentos")
+  storage_path   String
+  validade       DateTime?      @db.Date
+  enviado_por_id String?        @db.Uuid
+  created_at     DateTime       @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime       @default(now()) @db.Timestamptz(6)
+
+  clientes       clientes?      @relation(fields: [cliente_id], references: [id], onUpdate: NoAction)
+  contratos      contratos?     @relation(fields: [contrato_id], references: [id], onUpdate: NoAction)
+  profiles       profiles?      @relation(fields: [enviado_por_id], references: [id], onUpdate: NoAction)
+  equipamentos   equipamentos?  @relation(fields: [equipamento_id], references: [id], onUpdate: NoAction)
+  funcionarios   funcionarios?  @relation(fields: [funcionario_id], references: [id], onUpdate: NoAction)
+  manutencoes    manutencoes?   @relation(fields: [manutencao_id], references: [id], onUpdate: NoAction)
+
+  @@index([tipo], map: "idx_documentos_tipo")
+  @@schema("public")
+}
+
+model equipamentos {
+  id                     String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  categoria_id           String                 @db.Uuid
+  nome                   String
+  modelo                 String?
+  fabricante             String?
+  ano_fabricacao         Int?
+  numero_serie           String?                @unique
+  placa                  String?                @unique
+  capacidade_kg          Decimal?               @db.Decimal(12, 2)
+  altura_max_metros      Decimal?               @db.Decimal(8, 2)
+  alcance_max_metros     Decimal?               @db.Decimal(8, 2)
+  renavam                String?
+  chassi                 String?                @unique
+  valor_locacao_diaria   Decimal?               @db.Decimal(12, 2)
+  status                 status_equipamento     @default(disponivel)
+  observacoes            String?
+  ativo                  Boolean                @default(true)
+  deleted_at             DateTime?              @db.Timestamptz(6)
+  created_at             DateTime               @default(now()) @db.Timestamptz(6)
+  updated_at             DateTime               @default(now()) @db.Timestamptz(6)
+
+  documentos             documentos[]
+  categorias_equipamento categorias_equipamento @relation(fields: [categoria_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  itens_contrato         itens_contrato[]
+  manutencoes            manutencoes[]
+
+  @@index([categoria_id], map: "idx_equipamentos_categoria_id")
+  @@index([status], map: "idx_equipamentos_status")
+  @@schema("public")
+}
+
+model funcionarios {
+  id              String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profile_id      String?          @unique @db.Uuid
+  nome            String
+  cpf             String?          @unique
+  rg              String?
+  data_nascimento DateTime?        @db.Date
+  cargo           String
+  matricula       String?          @unique
+  email           String?
+  telefone        String?
+  celular         String?
+  cep             String?
+  logradouro      String?
+  numero          String?
+  complemento     String?
+  bairro          String?
+  cidade          String?
+  estado          String?          @db.Char(2)
+  cnh_numero      String?
+  cnh_categoria   String?
+  cnh_validade    DateTime?        @db.Date
+  data_admissao   DateTime?        @db.Date
+  data_demissao   DateTime?        @db.Date
+  observacoes     String?
+  ativo           Boolean          @default(true)
+  deleted_at      DateTime?        @db.Timestamptz(6)
+  created_at      DateTime         @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime         @default(now()) @db.Timestamptz(6)
+
+  documentos      documentos[]
+  profiles        profiles?        @relation(fields: [profile_id], references: [id], onUpdate: NoAction)
+  itens_contrato  itens_contrato[]
+  manutencoes     manutencoes[]
+  operacoes       operacoes[]
+
+  @@index([ativo], map: "idx_funcionarios_ativo")
+  @@index([profile_id], map: "idx_funcionarios_profile_id")
+  @@schema("public")
+}
+
+model itens_contrato {
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  contrato_id     String        @db.Uuid
+  equipamento_id  String        @db.Uuid
+  operador_id     String?       @db.Uuid
+  data_inicio     DateTime?     @db.Date
+  data_fim        DateTime?     @db.Date
+  quantidade_dias Int?
+  valor_diaria    Decimal?      @db.Decimal(12, 2)
+  valor_total     Decimal?      @db.Decimal(12, 2)
+  descricao       String?
+  observacoes     String?
+  created_at      DateTime      @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime      @default(now()) @db.Timestamptz(6)
+
+  contratos       contratos     @relation(fields: [contrato_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  equipamentos    equipamentos  @relation(fields: [equipamento_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  funcionarios    funcionarios? @relation(fields: [operador_id], references: [id], onUpdate: NoAction)
+  operacoes       operacoes[]
+
+  @@index([contrato_id], map: "idx_itens_contrato_contrato_id")
+  @@index([equipamento_id], map: "idx_itens_contrato_equipamento_id")
+  @@index([operador_id], map: "idx_itens_contrato_operador_id")
+  @@schema("public")
+}
+
+model manutencoes {
+  id                  String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  equipamento_id      String            @db.Uuid
+  responsavel_id      String?           @db.Uuid
+  tipo                tipo_manutencao
+  status              status_manutencao @default(agendada)
+  data_agendada       DateTime?         @db.Date
+  data_inicio         DateTime?         @db.Timestamptz(6)
+  data_conclusao      DateTime?         @db.Timestamptz(6)
+  descricao           String
+  servicos_realizados String?
+  pecas_substituidas  String?
+  custo_estimado      Decimal?          @db.Decimal(12, 2)
+  custo_real          Decimal?          @db.Decimal(12, 2)
+  prestador_nome      String?
+  prestador_cnpj      String?
+  observacoes         String?
+  created_at          DateTime          @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime          @default(now()) @db.Timestamptz(6)
+
+  documentos          documentos[]
+  equipamentos        equipamentos      @relation(fields: [equipamento_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  funcionarios        funcionarios?     @relation(fields: [responsavel_id], references: [id], onUpdate: NoAction)
+
+  @@index([data_agendada], map: "idx_manutencoes_data_agendada")
+  @@index([equipamento_id], map: "idx_manutencoes_equipamento_id")
+  @@index([responsavel_id], map: "idx_manutencoes_responsavel_id")
+  @@index([status], map: "idx_manutencoes_status")
+  @@schema("public")
+}
+
+model operacoes {
+  id                String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  contrato_id       String          @db.Uuid
+  item_contrato_id  String?         @db.Uuid
+  operador_id       String?         @db.Uuid
+  data_saida        DateTime?       @db.Timestamptz(6)
+  data_retorno      DateTime?       @db.Timestamptz(6)
+  local_servico     String?
+  horimetro_saida   Decimal?        @db.Decimal(10, 2)
+  horimetro_retorno Decimal?        @db.Decimal(10, 2)
+  descricao         String?
+  observacoes       String?
+  created_at        DateTime        @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime        @default(now()) @db.Timestamptz(6)
+
+  contratos         contratos       @relation(fields: [contrato_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  itens_contrato    itens_contrato? @relation(fields: [item_contrato_id], references: [id], onUpdate: NoAction)
+  funcionarios      funcionarios?   @relation(fields: [operador_id], references: [id], onUpdate: NoAction)
+
+  @@index([contrato_id], map: "idx_operacoes_contrato_id")
+  @@index([data_saida], map: "idx_operacoes_data_saida")
+  @@index([operador_id], map: "idx_operacoes_operador_id")
+  @@schema("public")
+}
+
+model pagamentos {
+  id              String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  contrato_id     String           @db.Uuid
+  numero_parcela  Int?
+  valor           Decimal          @db.Decimal(12, 2)
+  data_vencimento DateTime         @db.Date
+  data_pagamento  DateTime?        @db.Date
+  status          status_pagamento @default(pendente)
+  forma_pagamento String?
+  observacoes     String?
+  created_at      DateTime         @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime         @default(now()) @db.Timestamptz(6)
+
+  contratos       contratos        @relation(fields: [contrato_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([contrato_id], map: "idx_pagamentos_contrato_id")
+  @@index([data_vencimento], map: "idx_pagamentos_data_vencimento")
+  @@index([status], map: "idx_pagamentos_status")
+  @@schema("public")
+}
+
+model profiles {
+  id           String        @id @db.Uuid
+  nome         String
+  cargo        cargo_usuario @default(visualizador)
+  email        String?
+  telefone     String?
+  avatar_url   String?
+  ativo        Boolean       @default(true)
+  created_at   DateTime      @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime      @default(now()) @db.Timestamptz(6)
+
+  contratos    contratos[]
+  documentos   documentos[]
+  funcionarios funcionarios?
+  users        users         @relation(fields: [id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@schema("public")
+}
+
+// ============== ENUMS ==============
+
+enum cargo_usuario {
+  admin
+  operacional
+  financeiro
+  tecnico
+  visualizador
+
+  @@schema("public")
+}
+
+enum status_contrato {
+  rascunho
+  aprovado
+  em_execucao
+  concluido
+  cancelado
+
+  @@schema("public")
+}
+
+enum status_equipamento {
+  disponivel
+  locado
+  em_manutencao
+  inativo
+
+  @@schema("public")
+}
+
+enum status_manutencao {
+  agendada
+  em_andamento
+  concluida
+  cancelada
+
+  @@schema("public")
+}
+
+enum status_pagamento {
+  pendente
+  pago
+  atrasado
+  cancelado
+
+  @@schema("public")
+}
+
+enum tipo_cliente {
+  pessoa_fisica
+  pessoa_juridica
+
+  @@schema("public")
+}
+
+enum tipo_documento {
+  contrato
+  laudo
+  nota_fiscal
+  certificado
+  cnh
+  aso
+  art
+  outro
+
+  @@schema("public")
+}
+
+enum tipo_manutencao {
+  preventiva
+  corretiva
+  preditiva
+
+  @@schema("public")
+}

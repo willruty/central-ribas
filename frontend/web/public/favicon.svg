@@ -1,0 +1,13 @@
+<svg viewBox="0 0 90 72" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="m" x1="0.1" y1="0" x2="0.9" y2="1">
+      <stop offset="0%" stop-color="#1d4ed8" />
+      <stop offset="100%" stop-color="#60a5fa" />
+    </linearGradient>
+  </defs>
+  <polygon points="0,64  11,64  22,8  11,8"  fill="url(#m)" />
+  <polygon points="14,64 25,64  36,8  25,8"  fill="url(#m)" />
+  <polygon points="28,64 39,64  50,8  39,8"  fill="url(#m)" />
+  <path fill-rule="evenodd" d="M 50,8 H 66 C 79,8 88,17 88,30 C 88,43 79,52 66,52 H 50 V 42 H 64 C 72,42 77,37 77,30 C 77,23 72,18 64,18 H 50 Z" fill="url(#m)" />
+  <path d="M 50,52 L 80,64 H 68 L 50,57 Z" fill="url(#m)" />
+</svg>

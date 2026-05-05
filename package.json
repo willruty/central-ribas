@@ -1,0 +1,12 @@
+{
+  "name": "gr-manager",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Monorepo para o sistema de Guindastes Ribas",
+  "scripts": {
+    "backend:dev": "cd backend && npm run start:dev",
+    "web:dev": "cd frontend/web && npm run dev",
+    "mobile:dev": "cd frontend/mobile && npx expo start -c --tunnel",
+    "dev:all": "npm run backend:dev & npm run web:dev & npm run mobile:dev"
+  }
+}

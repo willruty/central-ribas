@@ -1,0 +1,4 @@
+# Generated files
+migrations/
+dev.db
+dev.db-journal
