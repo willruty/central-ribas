@@ -7,7 +7,9 @@ import {
   Param,
   Delete,
   Query,
+  Req,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import {
   FuncionariosService,
   CreateFuncionarioComAcessoDto,
@@ -39,6 +41,11 @@ export class FuncionariosController {
   @Get('ativos')
   findAtivos() {
     return this.funcionariosService.findAtivos();
+  }
+
+  @Get('me')
+  findMe(@Req() req: Request) {
+    return this.funcionariosService.findMe((req as any).user.id);
   }
 
   @Get(':id')

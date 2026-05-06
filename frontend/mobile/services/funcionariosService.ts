@@ -1,5 +1,4 @@
 import { api } from './api';
-import { API_CONFIG } from './config';
 
 export type Funcionario = {
   id: string;
@@ -18,6 +17,16 @@ export type Funcionario = {
   created_at: string;
   updated_at: string;
 };
+
+export async function getFuncionarioMe(
+  token: string
+): Promise<{ data: Funcionario | null; error: string | null }> {
+  const { data, error } = await api.get<Funcionario>('/funcionarios/me', {
+    Authorization: `Bearer ${token}`,
+  });
+
+  return { data, error };
+}
 
 export async function getFuncionarios(
   token: string,

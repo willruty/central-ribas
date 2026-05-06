@@ -12,6 +12,7 @@ import { EquipamentosModule } from './equipamentos/equipamentos.module';
 import { DocumentosModule } from './documentos/documentos.module';
 import { ClientesModule } from './clientes/clientes.module';
 import { ContratosModule } from './contratos/contratos.module';
+import { RelatoriosModule } from './relatorios/relatorios.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { ContratosModule } from './contratos/contratos.module';
     DocumentosModule,
     ClientesModule,
     ContratosModule,
+    RelatoriosModule,
   ],
   controllers: [AppController],
   providers: [

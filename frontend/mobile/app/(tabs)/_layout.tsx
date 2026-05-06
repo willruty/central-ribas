@@ -14,36 +14,39 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        // --- ESTILO DO CABEÇALHO (Top Navbar) ---
         headerStyle: {
-          backgroundColor: "#08233e", // Azul escuro
-          borderBottomWidth: 3,
-          borderBottomColor: "#000",
-          elevation: 0, // Remove sombra nativa do Android
-          shadowOpacity: 0, // Remove sombra nativa do iOS
+          backgroundColor: "#08233e",
+          borderBottomWidth: 1,
+          borderBottomColor: "rgba(255,255,255,0.08)",
+          elevation: 0,
+          shadowOpacity: 0,
         },
         headerTintColor: "#fff",
         headerTitleStyle: {
-          fontWeight: "900",
-          textTransform: "uppercase",
+          fontWeight: "700",
+          fontSize: 16,
+          letterSpacing: 0.3,
         },
 
-        // --- ESTILO DA BARRA INFERIOR (Bottom Tab) ---
         tabBarStyle: {
-          backgroundColor: "#fff",
-          borderTopWidth: 3,
-          borderTopColor: "#000",
+          backgroundColor: "#ffffff",
+          borderTopWidth: 1,
+          borderTopColor: "#e2e8f0",
           height: 65,
           paddingBottom: 10,
           paddingTop: 5,
+          elevation: 0,
+          shadowColor: "#000",
+          shadowOffset: { width: 0, height: -1 },
+          shadowOpacity: 0.05,
+          shadowRadius: 4,
         },
-        tabBarActiveTintColor: "#FF3B3B",
-        tabBarInactiveTintColor: "#000", 
+        tabBarActiveTintColor: "#3b82f6",
+        tabBarInactiveTintColor: "#94a3b8",
         tabBarLabelStyle: {
-          fontWeight: "900",
-          textTransform: "uppercase",
+          fontWeight: "600",
           fontSize: 10,
-          marginTop: 4,
+          marginTop: 2,
         },
       }}
     >
@@ -59,16 +62,22 @@ export default function TabLayout() {
         }}
       />
 
-      {/* ABA 2: SEARCH */}
+      {/* ABA 2: DOCUMENTOS */}
       <Tabs.Screen
-        name="search"
+        name="documentos"
         options={{
-          title: "Buscar Documentos",
-          tabBarLabel: "Buscar",
+          title: "Meus Documentos",
+          tabBarLabel: "Documentos",
           tabBarIcon: ({ color }) => (
-            <TabBarIcon name="search" color={color} />
+            <TabBarIcon name="file-text" color={color} />
           ),
         }}
+      />
+
+      {/* Oculta a rota search legada */}
+      <Tabs.Screen
+        name="search"
+        options={{ href: null }}
       />
 
       {/* ABA 3: PROFILE */}

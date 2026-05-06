@@ -1,110 +1,123 @@
-import { useMemo, useState, useLayoutEffect } from "react";
+import { useState, useEffect, useLayoutEffect } from "react";
 import {
-  BarChart3, TrendingUp, TrendingDown, Users, FileText, Calendar, Download,
-  PieChart as PieChartIcon, Printer, ArrowUpRight, SlidersHorizontal, X
+  BarChart3, Users, FileText, Download,
+  PieChart as PieChartIcon, Printer, AlertTriangle,
+  CheckCircle2, Clock,
 } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { toast } from "@/components/ui/sonner";
 import { Button } from "@/components/ui/button";
 import { gsap, ScrollTrigger } from "@/lib/gsap";
 import * as XLSX from "xlsx";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid,
-  ResponsiveContainer, Cell
+  ResponsiveContainer, Cell,
 } from "recharts";
-import {
-  mockKpis, mockRevenueByMonth, mockPortfolioStatus
-} from "@/lib/mockData";
+import { useAuth } from "@/contexts/AuthContext";
+import { getResumo } from "@/services/relatoriosService";
+import { ResumoRelatorio } from "@/services/types";
 
-const PERIODS = ["7d", "30d", "90d", "Ano"] as const;
-type Period = typeof PERIODS[number];
+const TIPO_LABELS: Record<string, string> = {
+  cnh: "CNH",
+  aso: "ASO",
+  certificado: "Cert.",
+  contrato: "Contrato",
+  laudo: "Laudo",
+  nota_fiscal: "NF",
+  art: "ART",
+  outro: "Outro",
+};
 
-type TrendFilter = "all" | "up" | "down";
-type ChartType = "Barras" | "Área";
+const STATUS_LABELS: Record<string, string> = {
+  disponivel: "Disponível",
+  locado: "Locado",
+  em_manutencao: "Manutenção",
+  inativo: "Inativo",
+};
 
-const Reports = () => {
-  const [period, setPeriod] = useState<Period>("7d");
+const STATUS_COLORS: Record<string, string> = {
+  disponivel: "#10b981",
+  locado: "#3b82f6",
+  em_manutencao: "#f59e0b",
+  inativo: "#94a3b8",
+};
 
-  // ── Filter panel state ───────────────────────────────────────────
-  const [filtersOpen, setFiltersOpen] = useState(false);
-  const [trendFilter, setTrendFilter] = useState<TrendFilter>("all");
-  const [chartType, setChartType] = useState<ChartType>("Barras");
-  const [currentMonthOnly, setCurrentMonthOnly] = useState(false);
-
-  // ── Derived / filtered data ──────────────────────────────────────
-  const filteredKpis = useMemo(() => {
-    if (trendFilter === "up") return mockKpis.filter(k => k.trend >= 0);
-    if (trendFilter === "down") return mockKpis.filter(k => k.trend < 0);
-    return mockKpis;
-  }, [trendFilter]);
-
-  const filteredRevenue = useMemo(() => {
-    if (!currentMonthOnly) return mockRevenueByMonth;
-    // "Abr" is the current month in mock data
-    return mockRevenueByMonth.filter(m => m.month === "Abr");
-  }, [currentMonthOnly]);
-
-  const portfolioTotal = useMemo(
-    () => mockPortfolioStatus.reduce((s, p) => s + p.value, 0),
-    []
+// ── Loading skeleton ─────────────────────────────────────────────
+function KpiSkeleton() {
+  return (
+    <div className="section-card p-5 animate-pulse">
+      <div className="flex items-center justify-between mb-3">
+        <div className="h-2.5 w-24 rounded bg-muted" />
+      </div>
+      <div className="h-8 w-16 rounded bg-muted mb-2" />
+      <div className="h-2 w-32 rounded bg-muted/60" />
+    </div>
   );
+}
 
-  const hasActiveFilters = trendFilter !== "all" || currentMonthOnly;
+function ChartSkeleton({ height = 240 }: { height?: number }) {
+  return (
+    <div className="animate-pulse" style={{ height }}>
+      <div className="h-full rounded bg-muted/40" />
+    </div>
+  );
+}
 
-  const clearFilters = () => {
-    setTrendFilter("all");
-    setChartType("Barras");
-    setCurrentMonthOnly(false);
-  };
+// ── Main component ───────────────────────────────────────────────
+const Reports = () => {
+  const { token } = useAuth();
+  const [resumo, setResumo] = useState<ResumoRelatorio | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // ── Export Excel ─────────────────────────────────────────────────
+  useEffect(() => {
+    if (!token) return;
+    getResumo(token)
+      .then(({ data, error }) => {
+        if (error) toast.error(`Erro ao carregar relatório: ${error}`);
+        else if (data) setResumo(data);
+      })
+      .finally(() => setIsLoading(false));
+  }, [token]);
+
+  // ── Export Excel ─────────────────────────────────────────────
   const handleExportExcel = () => {
+    if (!resumo) return;
     const wb = XLSX.utils.book_new();
 
-    // Aba KPIs
-    const kpiSheet = XLSX.utils.json_to_sheet(
-      mockKpis.map(k => ({
-        Label: k.label,
-        Valor: k.value,
-        "Variação%": k.trend,
-        Subtítulo: k.sub,
-      }))
-    );
+    const kpiSheet = XLSX.utils.json_to_sheet([
+      { KPI: "Equipamentos ativos",    Valor: resumo.equipamentosAtivos },
+      { KPI: "Documentos vencidos",    Valor: resumo.documentosVencidos },
+      { KPI: "Vencendo em 30 dias",    Valor: resumo.documentosVencendo30d },
+      { KPI: "Funcionários ativos",    Valor: resumo.funcionariosAtivos },
+    ]);
     XLSX.utils.book_append_sheet(wb, kpiSheet, "KPIs");
 
-    // Aba Receita Mensal
-    const revenueSheet = XLSX.utils.json_to_sheet(
-      mockRevenueByMonth.map(r => ({
-        Mês: r.month,
-        Valor: r.value,
+    const tipoSheet = XLSX.utils.json_to_sheet(
+      resumo.documentosPorTipo.map((r) => ({
+        Tipo: TIPO_LABELS[r.tipo] ?? r.tipo,
+        Total: r.total,
       }))
     );
-    XLSX.utils.book_append_sheet(wb, revenueSheet, "Receita Mensal");
+    XLSX.utils.book_append_sheet(wb, tipoSheet, "Documentos por Tipo");
 
-    // Aba Portfólio
-    const portfolioSheet = XLSX.utils.json_to_sheet(
-      mockPortfolioStatus.map(p => ({
-        Status: p.label,
-        Contratos: p.value,
+    const frotaSheet = XLSX.utils.json_to_sheet(
+      resumo.frotaPorStatus.map((r) => ({
+        Status: STATUS_LABELS[r.status] ?? r.status,
+        Total: r.total,
       }))
     );
-    XLSX.utils.book_append_sheet(wb, portfolioSheet, "Portfólio");
+    XLSX.utils.book_append_sheet(wb, frotaSheet, "Frota por Status");
 
     const today = new Date().toISOString().slice(0, 10);
     XLSX.writeFile(wb, `relatorio-ribas-${today}.xlsx`);
     toast.success("Relatório exportado!");
   };
 
-  // ── Print / PDF ──────────────────────────────────────────────────
-  const handlePrint = () => {
-    window.print();
-  };
-
-  // ── GSAP ScrollTrigger ───────────────────────────────────────────
+  // ── GSAP ScrollTrigger ───────────────────────────────────────
   useLayoutEffect(() => {
+    if (isLoading) return;
     const scroller = "#dashboard-main";
     const ctx = gsap.context(() => {
-      // KPI cards — stagger fade+slide ao entrar na viewport
       gsap.from(".reports-kpi", {
         opacity: 0,
         y: 18,
@@ -119,7 +132,6 @@ const Reports = () => {
         },
       });
 
-      // Seções de gráfico — fade+slide
       gsap.from(".reports-chart-section", {
         opacity: 0,
         y: 14,
@@ -134,37 +146,6 @@ const Reports = () => {
         },
       });
 
-      // Linhas de top clientes — slide da esquerda
-      gsap.from(".performance-client", {
-        opacity: 0,
-        x: -12,
-        stagger: 0.06,
-        duration: 0.45,
-        ease: "power2.out",
-        scrollTrigger: {
-          trigger: ".performance-clients",
-          scroller,
-          start: "top 85%",
-          once: true,
-        },
-      });
-
-      // Barras de progresso dos clientes
-      gsap.from(".client-bar-fill", {
-        scaleX: 0,
-        transformOrigin: "left",
-        stagger: 0.06,
-        duration: 0.55,
-        ease: "power2.out",
-        scrollTrigger: {
-          trigger: ".performance-clients",
-          scroller,
-          start: "top 85%",
-          once: true,
-        },
-      });
-
-      // Grid de operações — fade+scale
       gsap.from(".performance-op", {
         opacity: 0,
         y: 8,
@@ -179,12 +160,30 @@ const Reports = () => {
           once: true,
         },
       });
-    });
 
-    return () => {
-      ctx.revert();
-    };
-  }, []);
+      gsap.from(".compliance-alert", {
+        opacity: 0,
+        x: -10,
+        stagger: 0.08,
+        duration: 0.4,
+        ease: "power2.out",
+        scrollTrigger: {
+          trigger: ".compliance-alerts",
+          scroller,
+          start: "top 87%",
+          once: true,
+        },
+      });
+    });
+    return () => ctx.revert();
+  }, [isLoading]);
+
+  // ── Donut helpers ────────────────────────────────────────────
+  const frotaFiltered = resumo
+    ? resumo.frotaPorStatus.filter((s) => s.total > 0)
+    : [];
+  const frotaTotal = frotaFiltered.reduce((acc, s) => acc + s.total, 0);
+  const CIRC = 2 * Math.PI * 40;
 
   return (
     <div>
@@ -192,56 +191,27 @@ const Reports = () => {
       <div className="flex items-end justify-between mb-4 flex-wrap gap-4">
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.22em] text-primary/70 mb-1">
-            Business Intelligence · Abril/2026
+            Business Intelligence · {new Date().toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}
           </p>
           <h1 className="text-2xl font-extrabold font-display text-foreground tracking-tight">
             Relatórios &amp; Métricas
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Desempenho operacional e financeiro em tempo real
+            Dados operacionais em tempo real
           </p>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex bg-muted/30 p-1 rounded border border-border">
-            {PERIODS.map((p) => (
-              <button
-                key={p}
-                onClick={() => setPeriod(p)}
-                className={`px-3 h-8 rounded text-xs font-bold transition-all ${
-                  period === p
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {p}
-              </button>
-            ))}
-          </div>
-
-          {/* Toggle advanced filters */}
+        <div className="flex items-center gap-2">
           <Button
             variant="outline"
-            size="sm"
-            onClick={() => setFiltersOpen(v => !v)}
-            className={`gap-2 rounded ${filtersOpen || hasActiveFilters ? "border-primary text-primary" : ""}`}
-          >
-            <SlidersHorizontal size={14} />
-            Filtros
-            {hasActiveFilters && (
-              <span className="ml-0.5 w-1.5 h-1.5 rounded-full bg-primary inline-block" />
-            )}
-          </Button>
-
-          <Button
-            variant="outline"
-            onClick={handlePrint}
+            onClick={() => window.print()}
             className="gap-2 rounded"
           >
             <Printer size={14} /> Imprimir
           </Button>
           <Button
             onClick={handleExportExcel}
+            disabled={isLoading || !resumo}
             className="gap-2 rounded shadow-lg shadow-primary/20 hover:shadow-primary/40"
           >
             <Download size={14} /> Exportar
@@ -249,195 +219,100 @@ const Reports = () => {
         </div>
       </div>
 
-      {/* ── Advanced Filters Panel ───────────────────────────── */}
-      <AnimatePresence>
-        {filtersOpen && (
-          <motion.div
-            key="filters-panel"
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.22, ease: "easeInOut" }}
-            className="overflow-hidden mb-4"
-          >
-            <div className="section-card p-4 flex flex-wrap items-end gap-5">
-
-              {/* Trend filter */}
-              <div className="flex flex-col gap-1.5">
-                <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-                  Tendência dos KPIs
-                </span>
-                <div className="flex gap-1">
-                  {(["all", "up", "down"] as TrendFilter[]).map((v) => {
-                    const labels: Record<TrendFilter, string> = { all: "Todos", up: "Alta", down: "Baixa" };
-                    return (
-                      <button
-                        key={v}
-                        onClick={() => setTrendFilter(v)}
-                        className={`px-3 h-7 rounded text-xs font-bold border transition-all ${
-                          trendFilter === v
-                            ? "bg-primary text-primary-foreground border-primary"
-                            : "border-border text-muted-foreground hover:text-foreground bg-background"
-                        }`}
-                      >
-                        {labels[v]}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Chart type */}
-              <div className="flex flex-col gap-1.5">
-                <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-                  Visualização
-                </span>
-                <select
-                  value={chartType}
-                  onChange={(e) => setChartType(e.target.value as ChartType)}
-                  className="h-7 px-2 rounded text-xs font-semibold border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                >
-                  <option value="Barras">Barras</option>
-                  <option value="Área">Área</option>
-                </select>
-              </div>
-
-              {/* Current month only */}
-              <div className="flex flex-col gap-1.5">
-                <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-                  Período
-                </span>
-                <label className="flex items-center gap-2 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={currentMonthOnly}
-                    onChange={(e) => setCurrentMonthOnly(e.target.checked)}
-                    className="w-3.5 h-3.5 accent-primary rounded"
-                  />
-                  <span className="text-xs font-semibold text-foreground">Mostrar apenas mês atual</span>
-                </label>
-              </div>
-
-              {/* Clear filters */}
-              <div className="ml-auto">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={clearFilters}
-                  disabled={!hasActiveFilters && chartType === "Barras"}
-                  className="gap-1.5 text-xs text-muted-foreground hover:text-foreground rounded"
-                >
-                  <X size={12} /> Limpar filtros
-                </Button>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* ── KPI cards — animated by GSAP ScrollTrigger ──────── */}
+      {/* ── KPI cards ───────────────────────────────────────── */}
       <div className="reports-kpi-grid grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
-        <AnimatePresence mode="popLayout">
-          {filteredKpis.map((kpi) => {
-            const positive = kpi.trend >= 0;
-            return (
-              <motion.div
-                key={kpi.label}
-                layout
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                transition={{ duration: 0.2 }}
-                className="reports-kpi relative section-card p-5 overflow-hidden group hover:border-primary/30 transition-colors"
-              >
-                <div className={`absolute -top-8 -right-8 w-28 h-28 rounded-full blur-2xl ${
-                  positive ? "bg-emerald-500/10" : "bg-red-500/10"
-                }`} />
-                <div className="relative">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-                      {kpi.label}
-                    </span>
-                    <span className={`flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full ${
-                      positive
-                        ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                        : "bg-red-500/10 text-red-600 dark:text-red-400"
-                    }`}>
-                      {positive ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
-                      {positive ? "+" : ""}{kpi.trend}%
-                    </span>
-                  </div>
-                  <p className="text-2xl md:text-3xl font-black text-card-foreground tracking-tight leading-none">
-                    {kpi.value}
-                  </p>
-                  <p className="text-[11px] text-muted-foreground mt-1.5">{kpi.sub}</p>
-                </div>
-              </motion.div>
-            );
-          })}
-        </AnimatePresence>
-
-        {filteredKpis.length === 0 && (
-          <div className="col-span-full flex items-center justify-center h-24 text-sm text-muted-foreground border border-dashed border-border rounded">
-            Nenhum KPI corresponde ao filtro selecionado.
-          </div>
-        )}
+        {isLoading ? (
+          Array.from({ length: 4 }).map((_, i) => <KpiSkeleton key={i} />)
+        ) : resumo ? (
+          [
+            {
+              label: "Equipamentos ativos",
+              value: resumo.equipamentosAtivos,
+              sub: `${resumo.equipamentosDisponiveis} disponíveis`,
+              glow: "bg-emerald-500/10",
+            },
+            {
+              label: "Documentos vencidos",
+              value: resumo.documentosVencidos,
+              sub: "renovação urgente",
+              glow: resumo.documentosVencidos > 0 ? "bg-red-500/10" : "bg-emerald-500/10",
+            },
+            {
+              label: "Vencendo em 30d",
+              value: resumo.documentosVencendo30d,
+              sub: "requerem atenção",
+              glow: resumo.documentosVencendo30d > 0 ? "bg-amber-500/10" : "bg-emerald-500/10",
+            },
+            {
+              label: "Equipe ativa",
+              value: resumo.funcionariosAtivos,
+              sub: "colaboradores",
+              glow: "bg-blue-500/10",
+            },
+          ].map((kpi) => (
+            <motion.div
+              key={kpi.label}
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.2 }}
+              className="reports-kpi relative section-card p-5 overflow-hidden hover:border-primary/30 transition-colors"
+            >
+              <div className={`absolute -top-8 -right-8 w-28 h-28 rounded-full blur-2xl ${kpi.glow}`} />
+              <div className="relative">
+                <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground block mb-3">
+                  {kpi.label}
+                </span>
+                <p className="text-2xl md:text-3xl font-black text-card-foreground tracking-tight leading-none">
+                  {kpi.value}
+                </p>
+                <p className="text-[11px] text-muted-foreground mt-1.5">{kpi.sub}</p>
+              </div>
+            </motion.div>
+          ))
+        ) : null}
       </div>
 
-      {/* ── Charts row — GSAP animates the section cards ────── */}
+      {/* ── Charts row ──────────────────────────────────────── */}
       <div className="reports-charts-row grid grid-cols-1 xl:grid-cols-[1.618fr_1fr] gap-6 mb-6">
 
-        {/* Revenue chart — Recharts BarChart */}
+        {/* Bar chart — Documentos por tipo */}
         <div className="reports-chart-section section-card p-6">
-          <div className="flex items-start justify-between mb-5">
-            <div>
-              <h3 className="text-base font-bold text-card-foreground flex items-center gap-2">
-                <BarChart3 size={16} className="text-primary" />
-                Receita mensal
-                {chartType !== "Barras" && (
-                  <span className="ml-1 text-[10px] font-bold uppercase tracking-widest text-primary/60 border border-primary/20 rounded px-1.5 py-0.5">
-                    {chartType}
-                  </span>
-                )}
-              </h3>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Últimos 6 meses · crescimento médio de 9,2%
-              </p>
-            </div>
-            <button
-              onClick={() => toast.info("Abrindo detalhamento…")}
-              className="text-[11px] font-bold text-primary hover:underline flex items-center gap-1"
-            >
-              Detalhar <ArrowUpRight size={12} />
-            </button>
+          <div className="mb-5">
+            <h3 className="text-base font-bold text-card-foreground flex items-center gap-2">
+              <BarChart3 size={16} className="text-primary" />
+              Documentos por tipo
+            </h3>
+            <p className="text-xs text-muted-foreground mt-0.5">Distribuição por categoria</p>
           </div>
 
-          {/* Recharts BarChart — replaces the old CSS bar grid */}
-          <div className="revenue-chart">
+          {isLoading ? (
+            <ChartSkeleton height={220} />
+          ) : (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart
-                data={filteredRevenue}
-                margin={{ top: 5, right: 10, left: 10, bottom: 5 }}
+                data={(resumo?.documentosPorTipo ?? []).map((d) => ({
+                  ...d,
+                  label: TIPO_LABELS[d.tipo] ?? d.tipo,
+                }))}
+                margin={{ top: 5, right: 10, left: 0, bottom: 5 }}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                 <XAxis
-                  dataKey="month"
+                  dataKey="label"
                   tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
                   axisLine={false}
                   tickLine={false}
                 />
                 <YAxis
-                  tickFormatter={(v) => `R$ ${(v / 1000).toFixed(0)}k`}
+                  tickFormatter={(v) => String(v)}
                   tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
-                  width={60}
+                  width={32}
                   axisLine={false}
                   tickLine={false}
+                  allowDecimals={false}
                 />
                 <Tooltip
-                  formatter={(value) => [
-                    `R$ ${Number(value).toLocaleString("pt-BR")}`,
-                    "Receita",
-                  ]}
+                  formatter={(value) => [value, "Documentos"]}
                   contentStyle={{
                     background: "hsl(var(--card))",
                     border: "1px solid hsl(var(--border))",
@@ -446,162 +321,197 @@ const Reports = () => {
                   }}
                   cursor={{ fill: "hsl(var(--muted) / 0.4)" }}
                 />
-                <Bar dataKey="value" radius={[6, 6, 0, 0] as any}>
-                  {filteredRevenue.map((entry, index) => {
-                    const isLast = index === filteredRevenue.length - 1;
-                    return (
-                      <Cell
-                        key={`cell-${index}`}
-                        fill={
-                          isLast
-                            ? "hsl(var(--primary))"
-                            : "hsl(var(--muted-foreground) / 0.3)"
-                        }
-                      />
-                    );
-                  })}
+                <Bar dataKey="total" radius={[6, 6, 0, 0] as any}>
+                  {(resumo?.documentosPorTipo ?? []).map((_, index) => (
+                    <Cell key={`cell-${index}`} fill="hsl(var(--primary))" />
+                  ))}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
-          </div>
+          )}
         </div>
 
-        {/* Portfolio donut — Framer Motion handles the stroke animation */}
+        {/* Donut — Frota por status */}
         <div className="reports-chart-section section-card p-6">
           <h3 className="text-base font-bold text-card-foreground flex items-center gap-2 mb-5">
-            <PieChartIcon size={16} className="text-primary" /> Portfólio
+            <PieChartIcon size={16} className="text-primary" /> Frota por status
           </h3>
 
-          <div className="flex items-center gap-6">
-            <div className="relative w-[140px] h-[140px] shrink-0">
-              <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
-                {(() => {
-                  let offset = 0;
-                  const circ = 2 * Math.PI * 40;
-                  return mockPortfolioStatus.map((seg, i) => {
-                    const pct = seg.value / portfolioTotal;
-                    const len = pct * circ;
-                    const strokeColors = ["#10b981", "#3b82f6", "#f59e0b", "#94a3b8"];
-                    const el = (
-                      <motion.circle
-                        key={seg.label}
-                        cx="50" cy="50" r="40"
-                        fill="none"
-                        strokeWidth="14"
-                        stroke={strokeColors[i]}
-                        strokeDasharray={`${len} ${circ}`}
-                        strokeDashoffset={-offset}
-                        strokeLinecap="round"
-                        initial={{ strokeDasharray: `0 ${circ}` }}
-                        animate={{ strokeDasharray: `${len} ${circ}` }}
-                        transition={{ delay: 0.35 + i * 0.1, duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-                      />
-                    );
-                    offset += len;
-                    return el;
-                  });
-                })()}
-              </svg>
-              <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="text-2xl font-black text-card-foreground leading-none">{portfolioTotal}</span>
-                <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mt-1">Contratos</span>
+          {isLoading ? (
+            <div className="flex items-center gap-6">
+              <div className="w-[140px] h-[140px] rounded-full bg-muted/40 animate-pulse shrink-0" />
+              <div className="flex-1 space-y-3">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="h-3 rounded bg-muted/40 animate-pulse" />
+                ))}
               </div>
             </div>
-
-            <div className="flex-1 space-y-2.5 min-w-0">
-              {mockPortfolioStatus.map((seg) => {
-                const pct = Math.round((seg.value / portfolioTotal) * 100);
-                return (
-                  <div key={seg.label} className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className={`w-2.5 h-2.5 rounded-full ${seg.color} shrink-0`} />
-                      <span className="text-xs font-semibold text-card-foreground truncate">{seg.label}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-[11px]">
-                      <span className="font-bold text-card-foreground tabular-nums">{seg.value}</span>
-                      <span className="text-muted-foreground tabular-nums w-8 text-right">{pct}%</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ── Performance tables — GSAP ScrollTrigger ─────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-        {/* Top clients */}
-        <div className="section-card p-6">
-          <h3 className="text-base font-bold text-card-foreground flex items-center gap-2 mb-5">
-            <Users size={16} className="text-primary" /> Top clientes do período
-          </h3>
-          <div className="performance-clients space-y-3">
-            {[
-              { name: "Construtora Andrade Gutierrez", value: "R$ 287.400", contracts: 8, pct: 100 },
-              { name: "MRV Engenharia S/A",            value: "R$ 214.800", contracts: 6, pct: 75 },
-              { name: "Odebrecht Infraestrutura",      value: "R$ 186.200", contracts: 5, pct: 65 },
-              { name: "Votorantim Cimentos",           value: "R$ 142.900", contracts: 4, pct: 50 },
-              { name: "Copel Distribuição",            value: "R$ 98.300",  contracts: 3, pct: 34 },
-            ].map((c, i) => (
-              <div key={c.name} className="performance-client group">
-                <div className="flex items-center justify-between text-xs mb-1">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="w-5 h-5 rounded bg-muted/60 flex items-center justify-center text-[9px] font-black text-muted-foreground shrink-0">
-                      {i + 1}
-                    </span>
-                    <span className="font-semibold text-card-foreground truncate">{c.name}</span>
-                  </div>
-                  <span className="font-black text-card-foreground tabular-nums">{c.value}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="flex-1 h-1.5 bg-muted/50 rounded-full overflow-hidden">
-                    <div
-                      className="client-bar-fill h-full bg-gradient-to-r from-primary to-primary/60 rounded-full"
-                      style={{ width: `${c.pct}%` }}
-                    />
-                  </div>
-                  <span className="text-[10px] font-bold text-muted-foreground w-12 text-right tabular-nums">
-                    {c.contracts} ctr
+          ) : (
+            <div className="flex items-center gap-6">
+              <div className="relative w-[140px] h-[140px] shrink-0">
+                <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
+                  {(() => {
+                    let offset = 0;
+                    return frotaFiltered.map((seg, i) => {
+                      const pct = seg.total / (frotaTotal || 1);
+                      const len = pct * CIRC;
+                      const color = STATUS_COLORS[seg.status] ?? "#94a3b8";
+                      const el = (
+                        <motion.circle
+                          key={seg.status}
+                          cx="50" cy="50" r="40"
+                          fill="none"
+                          strokeWidth="14"
+                          stroke={color}
+                          strokeDasharray={`${len} ${CIRC}`}
+                          strokeDashoffset={-offset}
+                          strokeLinecap="round"
+                          initial={{ strokeDasharray: `0 ${CIRC}` }}
+                          animate={{ strokeDasharray: `${len} ${CIRC}` }}
+                          transition={{ delay: 0.35 + i * 0.1, duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+                        />
+                      );
+                      offset += len;
+                      return el;
+                    });
+                  })()}
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                  <span className="text-2xl font-black text-card-foreground leading-none">
+                    {resumo?.equipamentosAtivos ?? 0}
+                  </span>
+                  <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mt-1">
+                    Ativos
                   </span>
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
 
-        {/* Operational summary */}
+              <div className="flex-1 space-y-2.5 min-w-0">
+                {frotaFiltered.map((seg) => {
+                  const pct = Math.round((seg.total / (frotaTotal || 1)) * 100);
+                  const color = STATUS_COLORS[seg.status] ?? "#94a3b8";
+                  return (
+                    <div key={seg.status} className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span
+                          className="w-2.5 h-2.5 rounded-full shrink-0"
+                          style={{ background: color }}
+                        />
+                        <span className="text-xs font-semibold text-card-foreground truncate">
+                          {STATUS_LABELS[seg.status] ?? seg.status}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 text-[11px]">
+                        <span className="font-bold text-card-foreground tabular-nums">{seg.total}</span>
+                        <span className="text-muted-foreground tabular-nums w-8 text-right">{pct}%</span>
+                      </div>
+                    </div>
+                  );
+                })}
+                {frotaFiltered.length === 0 && (
+                  <p className="text-xs text-muted-foreground">Nenhum equipamento cadastrado.</p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Bottom section ───────────────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+        {/* Resumo operacional */}
         <div className="section-card p-6">
           <h3 className="text-base font-bold text-card-foreground flex items-center gap-2 mb-5">
-            <Calendar size={16} className="text-primary" /> Resumo operacional
+            <Users size={16} className="text-primary" /> Resumo operacional
           </h3>
-          <div className="performance-ops grid grid-cols-2 gap-4">
-            {[
-              { label: "Reuniões realizadas",     value: "28",        sub: "92% de presença" },
-              { label: "Propostas enviadas",      value: "17",        sub: "41% convertidas" },
-              { label: "Documentos processados",  value: "142",       sub: "em compliance" },
-              { label: "Horas operacionais",      value: "867",       sub: "frota ativa" },
-              { label: "Ticket médio",            value: "R$ 28.500", sub: "por contrato" },
-              { label: "Tempo médio de contrato", value: "4,2 meses", sub: "execução" },
-            ].map((item) => (
-              <div
-                key={item.label}
-                className="performance-op p-3 rounded bg-muted/30 border border-border/40"
-              >
-                <p className="text-lg font-black text-card-foreground tabular-nums">{item.value}</p>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mt-0.5">{item.label}</p>
-                <p className="text-[10px] text-muted-foreground/70 mt-0.5">{item.sub}</p>
-              </div>
-            ))}
-          </div>
+          {isLoading ? (
+            <div className="grid grid-cols-2 gap-4">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="p-3 rounded bg-muted/30 border border-border/40 animate-pulse">
+                  <div className="h-6 w-10 rounded bg-muted mb-2" />
+                  <div className="h-2 w-24 rounded bg-muted/60" />
+                </div>
+              ))}
+            </div>
+          ) : resumo ? (
+            <div className="performance-ops grid grid-cols-2 gap-4">
+              {[
+                { label: "Equipamentos ativos",  value: resumo.equipamentosAtivos,    sub: "na frota" },
+                { label: "Disponíveis agora",    value: resumo.equipamentosDisponiveis, sub: "prontos para locação" },
+                { label: "Documentos totais",    value: resumo.documentosTotal,        sub: "cadastrados" },
+                { label: "Em compliance",        value: resumo.documentosOk,           sub: "dentro da validade" },
+                { label: "Funcionários",         value: resumo.funcionariosAtivos,     sub: "ativos" },
+                { label: "Clientes",             value: resumo.clientesAtivos,         sub: "ativos" },
+              ].map((item) => (
+                <div
+                  key={item.label}
+                  className="performance-op p-3 rounded bg-muted/30 border border-border/40"
+                >
+                  <p className="text-lg font-black text-card-foreground tabular-nums">{item.value}</p>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mt-0.5">
+                    {item.label}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground/70 mt-0.5">{item.sub}</p>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
 
-          <button
-            onClick={() => toast.info("Gerando relatório completo…")}
-            className="w-full mt-5 h-10 text-xs font-bold rounded border border-dashed border-primary/30 text-primary hover:bg-primary/5 transition-colors flex items-center justify-center gap-2"
-          >
-            <FileText size={13} /> Gerar relatório completo
-          </button>
+        {/* Compliance alerts */}
+        <div className="section-card p-6">
+          <h3 className="text-base font-bold text-card-foreground flex items-center gap-2 mb-5">
+            <FileText size={16} className="text-primary" /> Status de compliance
+          </h3>
+
+          {isLoading ? (
+            <div className="space-y-3">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="h-12 rounded bg-muted/30 animate-pulse" />
+              ))}
+            </div>
+          ) : resumo ? (
+            <div className="compliance-alerts space-y-3">
+              <div className="compliance-alert flex items-center justify-between p-3 rounded border border-red-500/20 bg-red-500/5">
+                <div className="flex items-center gap-2.5">
+                  <AlertTriangle size={15} className="text-red-500 shrink-0" />
+                  <span className="text-sm font-semibold text-card-foreground">Documentos vencidos</span>
+                </div>
+                <span className={`px-2.5 py-1 rounded-full text-xs font-black ${
+                  resumo.documentosVencidos > 0
+                    ? "bg-red-500/15 text-red-600 dark:text-red-400"
+                    : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                }`}>
+                  {resumo.documentosVencidos}
+                </span>
+              </div>
+
+              <div className="compliance-alert flex items-center justify-between p-3 rounded border border-amber-500/20 bg-amber-500/5">
+                <div className="flex items-center gap-2.5">
+                  <Clock size={15} className="text-amber-500 shrink-0" />
+                  <span className="text-sm font-semibold text-card-foreground">Vencendo em 30 dias</span>
+                </div>
+                <span className={`px-2.5 py-1 rounded-full text-xs font-black ${
+                  resumo.documentosVencendo30d > 0
+                    ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                    : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                }`}>
+                  {resumo.documentosVencendo30d}
+                </span>
+              </div>
+
+              <div className="compliance-alert flex items-center justify-between p-3 rounded border border-emerald-500/20 bg-emerald-500/5">
+                <div className="flex items-center gap-2.5">
+                  <CheckCircle2 size={15} className="text-emerald-500 shrink-0" />
+                  <span className="text-sm font-semibold text-card-foreground">Em dia</span>
+                </div>
+                <span className="px-2.5 py-1 rounded-full text-xs font-black bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+                  {resumo.documentosOk}
+                </span>
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

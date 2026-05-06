@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthService } from '../auth/auth.service';
 import { Prisma, cargo_usuario } from '@prisma/client';
@@ -93,6 +93,26 @@ export class FuncionariosService {
     return this.prisma.funcionarios.delete({
       where: { id },
     });
+  }
+
+  async findMe(userId: string) {
+    const profile = await this.prisma.profiles.findUnique({
+      where: { id: userId },
+    });
+
+    if (!profile) {
+      throw new NotFoundException('Perfil não encontrado para este usuário');
+    }
+
+    const funcionario = await this.prisma.funcionarios.findFirst({
+      where: { profile_id: profile.id, deleted_at: null },
+    });
+
+    if (!funcionario) {
+      throw new NotFoundException('Funcionário não vinculado a este perfil');
+    }
+
+    return funcionario;
   }
 
   async findByEmail(email: string) {

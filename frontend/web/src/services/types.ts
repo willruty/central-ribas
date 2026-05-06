@@ -81,6 +81,22 @@ export type Cliente = {
   updated_at: string;
 };
 
+export type ResumoRelatorio = {
+  equipamentosAtivos: number;
+  equipamentosDisponiveis: number;
+  equipamentosLocados: number;
+  equipamentosEmManutencao: number;
+  documentosTotal: number;
+  documentosVencidos: number;
+  documentosVencendo30d: number;
+  documentosOk: number;
+  funcionariosAtivos: number;
+  clientesAtivos: number;
+  documentosPorTipo: Array<{ tipo: string; total: number }>;
+  frotaPorStatus: Array<{ status: string; total: number }>;
+  contratosPorStatus: Array<{ status: string; total: number }>;
+};
+
 export type Contrato = {
   id: string;
   cliente_id: string;
